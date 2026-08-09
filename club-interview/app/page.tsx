@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-// 관리자 비밀번호 설정 (원하는 비밀번호로 변경 가능)
+// 관리자 비밀번호 설정
 const ADMIN_PASSWORD = '1234';
 
 // 오후 8:00 ~ 11:00 (10분 간격 기본 슬롯)
@@ -253,7 +253,7 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
-      {/* Top Header - 자물쇠 버튼 제거 완료 */}
+      {/* 상단 헤더 - 자물쇠 버튼 제거 */}
       <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-5 py-4 flex justify-between items-center">
           <div 
@@ -273,12 +273,12 @@ export default function Page() {
 
       <main className="max-w-5xl mx-auto px-5 py-8">
         {isAdmin ? (
-          /* ==================== 관리자 진입 절차 ==================== */
+          /* ==================== 관리자 화면 ==================== */
           !isAuthenticated ? (
-            /* 관리자 비밀번호 인증 폼 */
+            /* 관리자 비밀번호 입력 폼 */
             <div className="max-w-md mx-auto my-12 bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl text-center space-y-6">
               <div>
-                <span className="text-3xl">🔒</span>
+                <span className="text-3xl">🔑</span>
                 <h2 className="text-lg font-bold text-white mt-2">관리자 인증</h2>
                 <p className="text-xs text-slate-400 mt-1">접속을 위해 관리자 비밀번호를 입력해 주세요.</p>
               </div>
@@ -300,7 +300,7 @@ export default function Page() {
               </form>
             </div>
           ) : (
-            /* 관리자 인증 성공 후 대시보드 */
+            /* 관리자 대시보드 */
             <div className="space-y-8">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl">
                 <div>
