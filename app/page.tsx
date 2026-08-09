@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 
+const MAX_CAPACITY = 3; // 각 슬롯당 선착순 3명
+
 const generateInitialTimeSlots = () => {
   const slots: string[] = [];
   let hour = 20;
@@ -34,223 +36,252 @@ export default function StudentPage() {
   const [studentId, setStudentId] = useState('');
   const [name, setName] = useState('');
   const [isIdentified, setIsIdentified] = useState(false);
-  const [selectedRanks, setSelectedRanks] = useState<string[]>([]);
-  const [isSubmitted, setIsSubmitted] = useState(false);
-  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
+  const [mySlotId, setMySlotId] = useState<string | null>(null);
   const [activeDateTab, setActiveDateTab] = useState<'9월 5일 (금)' | '9월 6일 (토)'>('9월 5일 (금)');
-  const [message, setMessage] = useState<{ type: string; text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
-  const [options, setOptions] = useState<any[]>(DEFAULT_OPTIONS);
 
   useEffect(() => {
-    const savedSubmissions = localStorage.getItem('gustjd_survey_data_v2');
-    if (savedSubmissions) {
-      try { setAllSubmissions(JSON.parse(savedSubmissions)); } catch (e) {}
-    }
-
-    const savedOptions = localStorage.getItem('gustjd_survey_options_v2');
-    if (savedOptions) {
-      try { setOptions(JSON.parse(savedOptions)); } catch (e) {}
-    }
+    loadSubmissions();
   }, []);
+
+  const loadSubmissions = () => {
+    const saved = localStorage.getItem('gustjd_survey_data_v2');
+    if (saved) {
+      try {
+        setAllSubmissions(JSON.parse(saved));
+      } catch (e) {}
+    }
+  };
 
   const saveSubmissions = (updated: any[]) => {
     setAllSubmissions(updated);
     localStorage.setItem('gustjd_survey_data_v2', JSON.stringify(updated));
   };
 
+  // 슬롯별 현재 신청인원 수 계산
+  const getSlotApplicantCount = (slotId: string) => {
+    return allSubmissions.filter(s => s.slotId === slotId).length;
+  };
+
   const handleIdentify = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentId.trim() || !name.trim()) {
-      alert('학번과 이름을 모두 입력해 주세요.');
+      alert('학번과 이름을 입력해 주세요.');
       return;
     }
 
+    loadSubmissions();
     const existing = allSubmissions.find(
       sub => sub.studentId === studentId.trim() && sub.name === name.trim()
     );
 
     if (existing) {
-      setSelectedRanks(existing.ranks || []);
-      setIsSubmitted(true);
-      setIsEditMode(false);
-      setMessage({ type: 'info', text: '기존 제출 내역을 불러왔습니다.' });
+      setMySlotId(existing.slotId);
+      setSelectedSlotId(existing.slotId);
+      setMessage({ type: 'info', text: '기존 신청 내역을 확인했습니다.' });
     } else {
-      setSelectedRanks([]);
-      setIsSubmitted(false);
-      setIsEditMode(true);
-      setMessage({ type: 'success', text: '새로운 신청서를 작성합니다.' });
+      setMySlotId(null);
+      setSelectedSlotId(null);
+      setMessage({ type: 'success', text: '신청하실 시간대를 선택해 주세요.' });
     }
     setIsIdentified(true);
   };
 
-  const toggleOptionRank = (optionId: string) => {
-    if (isSubmitted && !isEditMode) return;
-
-    if (selectedRanks.includes(optionId)) {
-      setSelectedRanks(selectedRanks.filter(id => id !== optionId));
-    } else {
-      if (selectedRanks.length >= 6) {
-        alert('최대 6순위까지만 선택할 수 있습니다.');
-        return;
-      }
-      setSelectedRanks([...selectedRanks, optionId]);
+  const handleSelectSlot = (slotId: string) => {
+    const count = getSlotApplicantCount(slotId);
+    
+    // 본인이 기존에 신청했던 슬롯이 아니라면 선착순 마감 체크
+    if (slotId !== mySlotId && count >= MAX_CAPACITY) {
+      alert('선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.');
+      return;
     }
+    setSelectedSlotId(slotId);
   };
 
   const handleSubmit = () => {
-    if (selectedRanks.length === 0) {
-      alert('최소 1개 이상의 순위를 선택해 주세요.');
+    if (!selectedSlotId) {
+      alert('면접 시간대를 선택해 주세요.');
+      return;
+    }
+
+    // 최신 신청자 목록 다시 확인 (선착순 검증)
+    const saved = localStorage.getItem('gustjd_survey_data_v2');
+    const currentSubmissions = saved ? JSON.parse(saved) : [];
+    
+    const count = currentSubmissions.filter((s: any) => s.slotId === selectedSlotId && !(s.studentId === studentId.trim() && s.name === name.trim())).length;
+
+    if (count >= MAX_CAPACITY) {
+      alert('방금 해당 시간대가 선착순 마감되었습니다. 다른 시간대를 선택해 주세요.');
+      loadSubmissions();
       return;
     }
 
     const newRecord = {
       studentId: studentId.trim(),
       name: name.trim(),
-      ranks: selectedRanks,
+      slotId: selectedSlotId,
       updatedAt: new Date().toLocaleString('ko-KR')
     };
 
-    const existingIndex = allSubmissions.findIndex(
-      sub => sub.studentId === studentId.trim() && sub.name === name.trim()
+    const updatedList = currentSubmissions.filter(
+      (sub: any) => !(sub.studentId === studentId.trim() && sub.name === name.trim())
     );
-
-    let updatedList = [...allSubmissions];
-    if (existingIndex >= 0) {
-      updatedList[existingIndex] = newRecord;
-    } else {
-      updatedList.push(newRecord);
-    }
+    updatedList.push(newRecord);
 
     saveSubmissions(updatedList);
-    setIsSubmitted(true);
-    setIsEditMode(false);
-    setMessage({ type: 'success', text: '지망 신청이 성공적으로 저장되었습니다!' });
+    setMySlotId(selectedSlotId);
+    setMessage({ type: 'success', text: '면접 시간 신청이 성공적으로 완료되었습니다!' });
   };
 
-  const filteredOptions = options.filter(o => o.date === activeDateTab);
+  const handleCancel = () => {
+    if (!confirm('신청을 취소하시겠습니까?')) return;
+
+    const updatedList = allSubmissions.filter(
+      sub => !(sub.studentId === studentId.trim() && sub.name === name.trim())
+    );
+    saveSubmissions(updatedList);
+    setMySlotId(null);
+    setSelectedSlotId(null);
+    setMessage({ type: 'info', text: '신청이 취소되었습니다.' });
+  };
+
+  const filteredOptions = DEFAULT_OPTIONS.filter(o => o.date === activeDateTab);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased">
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-5xl mx-auto px-5 py-4 flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-indigo-500/20">
-              09
-            </div>
-            <div>
-              <h1 className="font-bold text-base text-slate-100 tracking-tight">면접 일정 지망 신청 System</h1>
-              <p className="text-xs text-slate-400">9월 5일 ~ 9월 6일 (오후 8:00 - 11:00)</p>
-            </div>
+    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased">
+      {/* 헤더 */}
+      <header className="border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-50 shadow-sm">
+        <div className="max-w-4xl mx-auto px-5 py-4 flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white text-lg shadow-md shadow-blue-500/20">
+            09
+          </div>
+          <div>
+            <h1 className="font-bold text-lg text-slate-900 tracking-tight">동아리 면접 시간 신청 (선착순)</h1>
+            <p className="text-xs text-slate-500">각 타임슬롯당 선착순 3명 제한</p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-5 py-8 space-y-6">
+      <main className="max-w-4xl mx-auto px-5 py-8 space-y-6">
         {message && (
-          <div className="p-4 rounded-xl text-xs bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+          <div className={`p-4 rounded-xl text-xs font-semibold border ${
+            message.type === 'success' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+            message.type === 'error' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+            'bg-blue-50 text-blue-700 border-blue-200'
+          }`}>
             {message.text}
           </div>
         )}
 
-        <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-          <h2 className="text-sm font-bold text-slate-200 mb-4">1. 본인 확인 (학번 및 이름 입력)</h2>
+        {/* 1. 본인 확인 */}
+        <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-4">
+          <h2 className="text-sm font-bold text-slate-900">1. 본인 확인</h2>
           <form onSubmit={handleIdentify} className="grid grid-cols-1 sm:grid-cols-5 gap-3">
             <input
               type="text"
               placeholder="학번 (예: 20241234)"
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
-              disabled={isIdentified && !isEditMode}
-              className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white"
+              className="sm:col-span-2 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
               placeholder="이름 (예: 홍길동)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              disabled={isIdentified && !isEditMode}
-              className="sm:col-span-2 bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white"
+              className="sm:col-span-2 bg-slate-50 border border-slate-300 rounded-xl px-3.5 py-2.5 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            <button type="submit" className="sm:col-span-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold py-2.5 rounded-xl transition">
-              {isIdentified ? '재조회' : '확인'}
+            <button type="submit" className="sm:col-span-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold py-2.5 rounded-xl transition shadow-sm">
+              확인
             </button>
           </form>
         </div>
 
+        {/* 2. 시간대 선택 */}
         {isIdentified && (
-          <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-6">
+          <div className="bg-white border border-slate-200 p-6 rounded-2xl shadow-sm space-y-6">
             <div>
-              <h2 className="text-sm font-bold text-slate-200 mb-1">2. 희망 시간대 선택 (1~6순위)</h2>
-              <p className="text-xs text-slate-400">원하시는 시간대를 클릭한 순서대로 1순위, 2순위... 자동 지정됩니다.</p>
+              <h2 className="text-sm font-bold text-slate-900 mb-1">2. 면접 시간 선택</h2>
+              <p className="text-xs text-slate-500">원하시는 시간대를 선택해 주세요. (각 칸당 3명 선착순)</p>
             </div>
 
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-[11px] font-bold text-slate-400">내가 선택한 지망 순위</span>
-                {(!isSubmitted || isEditMode) && (
-                  <button onClick={() => setSelectedRanks([])} className="text-[11px] text-slate-500 hover:text-red-400">전체 초기화</button>
-                )}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {selectedRanks.length === 0 && <span className="text-xs text-slate-600">선택된 시간대가 없습니다.</span>}
-                {selectedRanks.map((id, idx) => {
-                  const opt = DEFAULT_OPTIONS.find(o => o.id === id);
-                  return (
-                    <div key={id} onClick={() => toggleOptionRank(id)} className="bg-indigo-600/20 border border-indigo-500/40 text-indigo-300 px-3 py-1.5 rounded-lg text-xs flex items-center space-x-2 cursor-pointer">
-                      <span className="bg-indigo-500 text-white font-bold text-[10px] px-1.5 py-0.5 rounded">{idx + 1}순위</span>
-                      <span>{opt?.title}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="flex border-b border-slate-800 space-x-6">
+            {/* 날짜 탭 */}
+            <div className="flex border-b border-slate-200 space-x-6">
               {(['9월 5일 (금)', '9월 6일 (토)'] as const).map(date => (
                 <button
                   key={date}
                   onClick={() => setActiveDateTab(date)}
-                  className={`pb-3 text-xs font-bold border-b-2 ${activeDateTab === date ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-slate-500'}`}
+                  className={`pb-3 text-xs font-bold border-b-2 transition ${
+                    activeDateTab === date ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-400 hover:text-slate-600'
+                  }`}
                 >
                   📅 {date}
                 </button>
               ))}
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+            {/* 타임 슬롯 Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
               {filteredOptions.map(opt => {
-                const rankIdx = selectedRanks.indexOf(opt.id);
-                const isSelected = rankIdx !== -1;
+                const currentCount = getSlotApplicantCount(opt.id);
+                const isFull = currentCount >= MAX_CAPACITY;
+                const isSelected = selectedSlotId === opt.id;
+                const isMyCurrent = mySlotId === opt.id;
+
                 return (
                   <div
                     key={opt.id}
-                    onClick={() => toggleOptionRank(opt.id)}
-                    className={`p-3.5 rounded-xl border text-center cursor-pointer relative transition ${
-                      isSelected ? 'bg-indigo-600/20 border-indigo-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    onClick={() => handleSelectSlot(opt.id)}
+                    className={`p-3.5 rounded-xl border text-center transition cursor-pointer relative ${
+                      isMyCurrent
+                        ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-500'
+                        : isSelected
+                        ? 'bg-blue-50 border-blue-600 text-blue-900 ring-2 ring-blue-600'
+                        : isFull
+                        ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-white border-slate-200 hover:border-blue-300 text-slate-700'
                     }`}
                   >
-                    {isSelected && (
-                      <span className="absolute top-2 right-2 bg-indigo-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded">
-                        {rankIdx + 1}순위
+                    <div className="text-xs font-bold">{opt.time}</div>
+                    
+                    <div className="mt-2 text-[11px]">
+                      {isFull ? (
+                        <span className="inline-block px-2 py-0.5 rounded bg-rose-100 text-rose-600 font-bold">마감 (3/3)</span>
+                      ) : (
+                        <span className={`font-semibold ${isSelected ? 'text-blue-600' : 'text-slate-500'}`}>
+                          {currentCount} / {MAX_CAPACITY}석
+                        </span>
+                      )}
+                    </div>
+
+                    {isMyCurrent && (
+                      <span className="absolute -top-2 -right-1 bg-emerald-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full shadow">
+                        내 신청
                       </span>
                     )}
-                    <div className="text-xs font-bold">{opt.time}</div>
                   </div>
                 );
               })}
             </div>
 
-            <div className="pt-4 border-t border-slate-800 flex justify-end">
-              {isSubmitted && !isEditMode ? (
-                <button onClick={() => setIsEditMode(true)} className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold px-6 py-3 rounded-xl transition">
-                  ✏️ 지망 수정하기
-                </button>
-              ) : (
-                <button onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-8 py-3 rounded-xl transition shadow-lg shadow-indigo-600/20">
-                  지망 제출하기
+            {/* 하단 신청/취소 버튼 */}
+            <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
+              {mySlotId && (
+                <button
+                  onClick={handleCancel}
+                  className="bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 text-xs font-semibold px-5 py-2.5 rounded-xl transition"
+                >
+                  신청 취소
                 </button>
               )}
+              <button
+                onClick={handleSubmit}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-7 py-2.5 rounded-xl transition shadow-md shadow-blue-500/20"
+              >
+                {mySlotId ? '시간 변경하기' : '선택 완료'}
+              </button>
             </div>
           </div>
         )}
