@@ -21,10 +21,10 @@ const generateInitialTimeSlots = () => {
 
   const result: any[] = [];
   slots.forEach((time, idx) => {
-    result.push({ id: `sep5_${idx}`, date: '9월 5일 (금)', time, title: `9/5(금) ${time}` });
+    result.push({ id: `sep5_${idx}`, date: '9월 5일 (토)', time, title: `9/5(토) ${time}` });
   });
   slots.forEach((time, idx) => {
-    result.push({ id: `sep6_${idx}`, date: '9월 6일 (토)', time, title: `9/6(토) ${time}` });
+    result.push({ id: `sep6_${idx}`, date: '9월 6일 (일)', time, title: `9/6(일) ${time}` });
   });
 
   return result;
@@ -38,7 +38,7 @@ export default function StudentPage() {
   const [isIdentified, setIsIdentified] = useState(false);
   const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const [mySlotId, setMySlotId] = useState<string | null>(null);
-  const [activeDateTab, setActiveDateTab] = useState<'9월 5일 (금)' | '9월 6일 (토)'>('9월 5일 (금)');
+  const [activeDateTab, setActiveDateTab] = useState<'9월 5일 (토)' | '9월 6일 (일)'>('9월 5일 (토)');
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
 
@@ -92,7 +92,6 @@ export default function StudentPage() {
   const handleSelectSlot = (slotId: string) => {
     const count = getSlotApplicantCount(slotId);
     
-    // 본인이 기존에 신청했던 슬롯이 아니라면 선착순 마감 체크
     if (slotId !== mySlotId && count >= MAX_CAPACITY) {
       alert('선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.');
       return;
@@ -106,7 +105,6 @@ export default function StudentPage() {
       return;
     }
 
-    // 최신 신청자 목록 다시 확인 (선착순 검증)
     const saved = localStorage.getItem('gustjd_survey_data_v2');
     const currentSubmissions = saved ? JSON.parse(saved) : [];
     
@@ -159,7 +157,7 @@ export default function StudentPage() {
           </div>
           <div>
             <h1 className="font-bold text-lg text-slate-900 tracking-tight">동아리 면접 시간 신청 (선착순)</h1>
-            <p className="text-xs text-slate-500">각 타임슬롯당 선착순 3명 제한</p>
+            <p className="text-xs text-slate-500">각 타임슬롯당 선착순 3명 제한 (9/5 토, 9/6 일)</p>
           </div>
         </div>
       </header>
@@ -209,7 +207,7 @@ export default function StudentPage() {
 
             {/* 날짜 탭 */}
             <div className="flex border-b border-slate-200 space-x-6">
-              {(['9월 5일 (금)', '9월 6일 (토)'] as const).map(date => (
+              {(['9월 5일 (토)', '9월 6일 (일)'] as const).map(date => (
                 <button
                   key={date}
                   onClick={() => setActiveDateTab(date)}

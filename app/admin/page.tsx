@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 
-const ADMIN_PASSWORD = '1234';
+const ADMIN_PASSWORD = '4791'; // 변경된 관리자 비밀번호
 const MAX_CAPACITY = 3;
 
 const generateInitialTimeSlots = () => {
@@ -22,10 +22,10 @@ const generateInitialTimeSlots = () => {
 
   const result: any[] = [];
   slots.forEach((time, idx) => {
-    result.push({ id: `sep5_${idx}`, date: '9월 5일 (금)', time, title: `9/5(금) ${time}` });
+    result.push({ id: `sep5_${idx}`, date: '9월 5일 (토)', time, title: `9/5(토) ${time}` });
   });
   slots.forEach((time, idx) => {
-    result.push({ id: `sep6_${idx}`, date: '9월 6일 (토)', time, title: `9/6(토) ${time}` });
+    result.push({ id: `sep6_${idx}`, date: '9월 6일 (일)', time, title: `9/6(일) ${time}` });
   });
 
   return result;
@@ -36,7 +36,7 @@ const DEFAULT_OPTIONS = generateInitialTimeSlots();
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [inputPassword, setInputPassword] = useState('');
-  const [adminDateTab, setAdminDateTab] = useState<'9월 5일 (금)' | '9월 6일 (토)'>('9월 5일 (금)');
+  const [adminDateTab, setAdminDateTab] = useState<'9월 5일 (토)' | '9월 6일 (일)'>('9월 5일 (토)');
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
 
   useEffect(() => {
@@ -67,7 +67,6 @@ export default function AdminPage() {
     }
   };
 
-  // 특정 지원자 제거 (개별 취소)
   const removeApplicant = (studentId: string, name: string) => {
     if (confirm(`${name} (${studentId}) 님의 신청을 제거하시겠습니까?`)) {
       const updated = allSubmissions.filter(s => !(s.studentId === studentId && s.name === name));
@@ -75,7 +74,6 @@ export default function AdminPage() {
     }
   };
 
-  // CSV 다운로드
   const downloadCSV = () => {
     if (allSubmissions.length === 0) {
       alert('다운로드할 데이터가 없습니다.');
@@ -103,7 +101,6 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans antialiased">
-      {/* Header */}
       <header className="border-b border-slate-200 bg-white/90 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-5 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-3">
@@ -133,7 +130,7 @@ export default function AdminPage() {
             <form onSubmit={handleAdminLogin} className="space-y-3">
               <input
                 type="password"
-                placeholder="비밀번호 (기본: 1234)"
+                placeholder="비밀번호 입력"
                 value={inputPassword}
                 onChange={(e) => setInputPassword(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2.5 text-xs text-center focus:outline-none focus:ring-2 focus:ring-slate-800"
@@ -148,7 +145,6 @@ export default function AdminPage() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* 상단 컨트롤 */}
             <div className="flex justify-between items-center bg-white p-6 border border-slate-200 rounded-2xl shadow-sm">
               <div>
                 <h2 className="text-lg font-bold text-slate-900">신청 현황 관리</h2>
@@ -162,9 +158,8 @@ export default function AdminPage() {
               </button>
             </div>
 
-            {/* 날짜 탭 */}
             <div className="flex border-b border-slate-200 space-x-6">
-              {(['9월 5일 (금)', '9월 6일 (토)'] as const).map(date => (
+              {(['9월 5일 (토)', '9월 6일 (일)'] as const).map(date => (
                 <button
                   key={date}
                   onClick={() => setAdminDateTab(date)}
@@ -177,7 +172,6 @@ export default function AdminPage() {
               ))}
             </div>
 
-            {/* 타임슬롯별 인원 확인 및 삭제 */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredOptions.map(opt => {
                 const applicants = allSubmissions.filter(s => s.slotId === opt.id);
