@@ -152,80 +152,82 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const body = await request.json();
-    const rawId = body?.id;
-    const studentId = String(body?.studentId || '').trim();
-    const name = String(body?.name || '').trim();
+    const rawId = body.id;
+    const studentId = String(body.studentId || '').trim();
+    const name = String(body.name || '').trim();
 
     const supabase = getSupabase();
 
-    // 1) id가 있으면 가장 정확하게 id로 삭제
-    if (rawId !== null && rawId !== undefined && String(rawId).trim() !== '') {
-      const id = Number(rawId);
+    // applicants 행 자체는 삭제하지 않습니다.
+    // 기존 지원/AI 배정 데이터는 유지하고 preferences._interview만 제거합니다.
+    let target: any = null;
 
-      if (Number.isFinite(id)) {
-        const { data: deleted, error } = await supabase
-          .from('applicants')
-          .delete()
-          .eq('id', id)
-          .select('id');
+    // 1) DB id로 우선 찾기
+    if (rawId !== undefined && rawId !== null && String(rawId).trim() !== '') {
+      const { data, error } = await supabase
+        .from('applicants')
+        .select('id, name, preferences')
+        .eq('id', String(rawId))
+        .maybeSingle();
 
-        if (error) throw error;
-
-        if (deleted && deleted.length > 0) {
-          return NextResponse.json({
-            success: true,
-            deletedId: id,
-            applicants: await getApplicants(),
-          });
-        }
-      }
+      if (error) throw error;
+      target = data;
     }
 
-    // 2) id가 프론트로 전달되지 않는 경우를 대비해
-    //    실제 면접 신청 메타데이터의 학번 + 이름으로 대상 행을 찾는다.
-    if (!studentId || !name) {
-      return NextResponse.json(
-        { error: '삭제할 신청자의 식별 정보가 없습니다. 목록을 새로고침해 주세요.' },
-        { status: 400 }
-      );
+    // 2) id로 못 찾으면 학번 + 이름으로 찾기
+    if (!target && studentId) {
+      const { data: rows, error } = await supabase
+        .from('applicants')
+        .select('id, name, preferences');
+
+      if (error) throw error;
+
+      target = (rows || []).find((row: any) => {
+        const meta = readInterviewMeta(row.preferences);
+        return (
+          String(meta?.studentId || '') === studentId &&
+          (!name || String(row.name || '') === name) &&
+          !!meta?.slotId
+        );
+      });
     }
-
-    const { data: rows, error: findError } = await supabase
-      .from('applicants')
-      .select('id, name, preferences');
-
-    if (findError) throw findError;
-
-    const target = (rows || []).find((row: any) => {
-      const meta = readInterviewMeta(row.preferences);
-      return row.name === name && String(meta?.studentId || '') === studentId;
-    });
 
     if (!target) {
       return NextResponse.json(
-        { error: `${name} (${studentId}) 신청자를 DB에서 찾지 못했습니다. 목록을 새로고침해 주세요.` },
+        { error: '삭제할 면접 신청자를 찾지 못했습니다. 관리자 목록을 새로고침한 뒤 다시 시도해 주세요.' },
         { status: 404 }
       );
     }
 
-    const { data: deleted, error: deleteError } = await supabase
+    const oldPreferences =
+      target.preferences &&
+      typeof target.preferences === 'object' &&
+      !Array.isArray(target.preferences)
+        ? target.preferences
+        : {};
+
+    const { _interview, ...remainingPreferences } = oldPreferences;
+
+    // applicants 행과 기존 지원 정보는 보존하고 면접 신청 정보만 삭제합니다.
+    const { data: updated, error: updateError } = await supabase
       .from('applicants')
-      .delete()
-      .eq('id', target.id)
-      .select('id');
+      .update({ preferences: remainingPreferences })
+      .eq('id', String(target.id))
+      .select('id, name, preferences')
+      .maybeSingle();
 
-    if (deleteError) throw deleteError;
+    if (updateError) throw updateError;
 
-    if (!deleted || deleted.length === 0) {
+    if (!updated) {
       return NextResponse.json(
-        { error: '삭제 대상이 DB에서 사라졌습니다. 목록을 새로고침해 주세요.' },
-        { status: 404 }
+        { error: '면접 신청 정보를 삭제하지 못했습니다.' },
+        { status: 500 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      deletedId: target.id,
+      deletedId: String(target.id),
       applicants: await getApplicants(),
     });
   } catch (error: any) {

@@ -84,7 +84,7 @@ export default function AdminPage() {
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: applicant.id ?? null,
+          id: applicant.id,
           studentId,
           name,
         }),
