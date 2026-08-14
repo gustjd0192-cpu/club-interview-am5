@@ -39,23 +39,20 @@ export default function AdminPage() {
   const [adminDateTab, setAdminDateTab] = useState<'9월 5일 (토)' | '9월 6일 (일)'>('9월 5일 (토)');
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
 
+  const loadSubmissions = async () => {
+    try {
+      const response = await fetch('/api/applicants', { cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '신청 내역을 불러오지 못했습니다.');
+      setAllSubmissions(data.applicants || []);
+    } catch (error) { console.error(error); alert('신청 내역을 불러오지 못했습니다.'); }
+  };
+
   useEffect(() => {
     loadSubmissions();
+    const timer = window.setInterval(loadSubmissions, 3000);
+    return () => window.clearInterval(timer);
   }, []);
-
-  const loadSubmissions = () => {
-    const saved = localStorage.getItem('gustjd_survey_data_v2');
-    if (saved) {
-      try {
-        setAllSubmissions(JSON.parse(saved));
-      } catch (e) {}
-    }
-  };
-
-  const saveSubmissions = (updated: any[]) => {
-    setAllSubmissions(updated);
-    localStorage.setItem('gustjd_survey_data_v2', JSON.stringify(updated));
-  };
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,11 +64,17 @@ export default function AdminPage() {
     }
   };
 
-  const removeApplicant = (studentId: string, name: string) => {
-    if (confirm(`${name} (${studentId}) 님의 신청을 제거하시겠습니까?`)) {
-      const updated = allSubmissions.filter(s => !(s.studentId === studentId && s.name === name));
-      saveSubmissions(updated);
-    }
+  const removeApplicant = async (studentId: string, name: string) => {
+    if (!confirm(`${name} (${studentId}) 님의 신청을 제거하시겠습니까?`)) return;
+    try {
+      const response = await fetch('/api/applicants', {
+        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ studentId, name }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || '삭제에 실패했습니다.');
+      setAllSubmissions(data.applicants || []);
+    } catch (error: any) { console.error(error); alert(error.message || '삭제에 실패했습니다.'); }
   };
 
   const downloadCSV = () => {

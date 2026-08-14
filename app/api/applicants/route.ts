@@ -21,6 +21,7 @@ async function getApplicants() {
   const { data, error } = await supabase
     .from('interview_applications')
     .select('id, student_id, name, slot_id, updated_at')
+    .not('slot_id', 'is', null)
     .order('slot_id', { ascending: true })
     .order('updated_at', { ascending: true });
 
@@ -40,10 +41,7 @@ export async function GET() {
     return NextResponse.json({ applicants: await getApplicants() });
   } catch (error: any) {
     console.error('GET /api/applicants:', error);
-    return NextResponse.json(
-      { error: error.message || '신청 내역을 불러오지 못했습니다.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '신청 내역을 불러오지 못했습니다.' }, { status: 500 });
   }
 }
 
@@ -55,20 +53,15 @@ export async function POST(request: Request) {
     const slotId = String(body.slotId || '').trim();
 
     if (!studentId || !name || !slotId) {
-      return NextResponse.json(
-        { error: '학번, 이름, 면접 시간대를 모두 입력해 주세요.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: '학번, 이름, 면접 시간대를 모두 입력해 주세요.' }, { status: 400 });
     }
 
     const supabase = getSupabase();
-
     const { data: existing, error: existingError } = await supabase
       .from('interview_applications')
       .select('id, student_id, name, slot_id')
       .eq('student_id', studentId)
       .eq('name', name)
-      .limit(1)
       .maybeSingle();
 
     if (existingError) throw existingError;
@@ -78,18 +71,13 @@ export async function POST(request: Request) {
       .select('id', { count: 'exact', head: true })
       .eq('slot_id', slotId);
 
-    if (existing?.id) {
-      countQuery = countQuery.neq('id', existing.id);
-    }
+    if (existing?.id) countQuery = countQuery.neq('id', existing.id);
 
     const { count, error: countError } = await countQuery;
     if (countError) throw countError;
 
     if ((count || 0) >= MAX_CAPACITY) {
-      return NextResponse.json(
-        { error: '선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.' },
-        { status: 409 }
-      );
+      return NextResponse.json({ error: '선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.' }, { status: 409 });
     }
 
     const now = new Date().toISOString();
@@ -99,28 +87,18 @@ export async function POST(request: Request) {
         .from('interview_applications')
         .update({ slot_id: slotId, updated_at: now })
         .eq('id', existing.id);
-
       if (error) throw error;
     } else {
       const { error } = await supabase
         .from('interview_applications')
-        .insert({
-          student_id: studentId,
-          name,
-          slot_id: slotId,
-          updated_at: now,
-        });
-
+        .insert({ student_id: studentId, name, slot_id: slotId, updated_at: now });
       if (error) throw error;
     }
 
     return NextResponse.json({ applicants: await getApplicants() });
   } catch (error: any) {
     console.error('POST /api/applicants:', error);
-    return NextResponse.json(
-      { error: error.message || '신청 저장에 실패했습니다.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '신청 저장에 실패했습니다.' }, { status: 500 });
   }
 }
 
@@ -131,14 +109,10 @@ export async function DELETE(request: Request) {
     const name = String(body.name || '').trim();
 
     if (!studentId || !name) {
-      return NextResponse.json(
-        { error: '학번과 이름이 필요합니다.' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: '학번과 이름이 필요합니다.' }, { status: 400 });
     }
 
     const supabase = getSupabase();
-
     const { error } = await supabase
       .from('interview_applications')
       .delete()
@@ -150,9 +124,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ applicants: await getApplicants() });
   } catch (error: any) {
     console.error('DELETE /api/applicants:', error);
-    return NextResponse.json(
-      { error: error.message || '신청 취소에 실패했습니다.' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: error.message || '신청 취소에 실패했습니다.' }, { status: 500 });
   }
 }
