@@ -209,18 +209,27 @@ export async function DELETE(request: Request) {
     const { _interview, ...remainingPreferences } = oldPreferences;
 
     // applicants 행과 기존 지원 정보는 보존하고 면접 신청 정보만 삭제합니다.
-    const { data: updated, error: updateError } = await supabase
+    const { error: updateError } = await supabase
       .from('applicants')
       .update({ preferences: remainingPreferences })
-      .eq('id', String(target.id))
-      .select('id, name, preferences')
-      .maybeSingle();
+      .eq('id', target.id);
 
     if (updateError) throw updateError;
 
-    if (!updated) {
+    // UPDATE 응답 자체를 성공 여부로 판단하지 않고, 실제 DB를 다시 조회해
+    // _interview가 제거됐는지 확인합니다.
+    const { data: verified, error: verifyError } = await supabase
+      .from('applicants')
+      .select('id, preferences')
+      .eq('id', target.id)
+      .maybeSingle();
+
+    if (verifyError) throw verifyError;
+
+    const remainingInterview = readInterviewMeta(verified?.preferences);
+    if (remainingInterview?.slotId) {
       return NextResponse.json(
-        { error: '면접 신청 정보를 삭제하지 못했습니다.' },
+        { error: '면접 신청 정보가 DB에서 정상적으로 취소되지 않았습니다. 잠시 후 다시 시도해 주세요.' },
         { status: 500 }
       );
     }

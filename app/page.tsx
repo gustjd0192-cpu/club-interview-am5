@@ -181,7 +181,7 @@ export default function StudentPage() {
       const response = await fetch('/api/applicants', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: mine.id }),
+        body: JSON.stringify({ id: mine.id, studentId: studentId.trim(), name: name.trim() }),
       });
       const result = await response.json();
 
