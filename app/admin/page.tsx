@@ -39,20 +39,27 @@ export default function AdminPage() {
   const [adminDateTab, setAdminDateTab] = useState<'9월 5일 (토)' | '9월 6일 (일)'>('9월 5일 (토)');
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
 
+  useEffect(() => {
+    loadSubmissions();
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const interval = window.setInterval(loadSubmissions, 3000);
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated]);
+
   const loadSubmissions = async () => {
     try {
       const response = await fetch('/api/applicants', { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '신청 내역을 불러오지 못했습니다.');
-      setAllSubmissions(data.applicants || []);
-    } catch (error) { console.error(error); alert('신청 내역을 불러오지 못했습니다.'); }
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '신청 내역을 불러오지 못했습니다.');
+      setAllSubmissions(result.applicants || []);
+    } catch (error) {
+      console.error(error);
+      alert('신청 내역을 불러오지 못했습니다.');
+    }
   };
-
-  useEffect(() => {
-    loadSubmissions();
-    const timer = window.setInterval(loadSubmissions, 3000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,17 +71,39 @@ export default function AdminPage() {
     }
   };
 
-  const removeApplicant = async (studentId: string, name: string) => {
+  const removeApplicant = async (applicant: any) => {
+    const studentId = String(applicant.studentId || '');
+    const name = String(applicant.name || '');
+
     if (!confirm(`${name} (${studentId}) 님의 신청을 제거하시겠습니까?`)) return;
+
     try {
       const response = await fetch('/api/applicants', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId, name }),
+        method: 'DELETE',
+        cache: 'no-store',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: applicant.id,
+          studentId,
+          name,
+        }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '삭제에 실패했습니다.');
-      setAllSubmissions(data.applicants || []);
-    } catch (error: any) { console.error(error); alert(error.message || '삭제에 실패했습니다.'); }
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.error || '신청 제거에 실패했습니다.');
+        await loadSubmissions();
+        return;
+      }
+
+      // 서버가 실제 DB 삭제 후 다시 조회한 목록만 화면에 반영
+      setAllSubmissions(result.applicants || []);
+    } catch (error) {
+      console.error(error);
+      alert('서버와 통신하는 중 오류가 발생했습니다.');
+      await loadSubmissions();
+    }
   };
 
   const downloadCSV = () => {
@@ -201,7 +230,7 @@ export default function AdminPage() {
                               {app.name} <span className="text-[10px] text-slate-400 font-normal">({app.studentId})</span>
                             </span>
                             <button
-                              onClick={() => removeApplicant(app.studentId, app.name)}
+                              onClick={() => removeApplicant(app)}
                               className="text-rose-500 hover:text-rose-700 text-[11px] font-bold px-1.5 py-0.5 hover:bg-rose-50 rounded transition"
                             >
                               제거
