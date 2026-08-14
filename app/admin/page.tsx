@@ -83,7 +83,11 @@ export default function AdminPage() {
         method: 'DELETE',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: applicant.id }),
+        body: JSON.stringify({
+          id: applicant.id ?? null,
+          studentId,
+          name,
+        }),
       });
 
       const result = await response.json();

@@ -152,36 +152,80 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const body = await request.json();
-    const id = Number(body.id);
+    const rawId = body?.id;
+    const studentId = String(body?.studentId || '').trim();
+    const name = String(body?.name || '').trim();
 
-    if (!Number.isFinite(id)) {
+    const supabase = getSupabase();
+
+    // 1) id가 있으면 가장 정확하게 id로 삭제
+    if (rawId !== null && rawId !== undefined && String(rawId).trim() !== '') {
+      const id = Number(rawId);
+
+      if (Number.isFinite(id)) {
+        const { data: deleted, error } = await supabase
+          .from('applicants')
+          .delete()
+          .eq('id', id)
+          .select('id');
+
+        if (error) throw error;
+
+        if (deleted && deleted.length > 0) {
+          return NextResponse.json({
+            success: true,
+            deletedId: id,
+            applicants: await getApplicants(),
+          });
+        }
+      }
+    }
+
+    // 2) id가 프론트로 전달되지 않는 경우를 대비해
+    //    실제 면접 신청 메타데이터의 학번 + 이름으로 대상 행을 찾는다.
+    if (!studentId || !name) {
       return NextResponse.json(
-        { error: '삭제할 신청자의 DB id가 없습니다.' },
+        { error: '삭제할 신청자의 식별 정보가 없습니다. 목록을 새로고침해 주세요.' },
         { status: 400 }
       );
     }
 
-    const supabase = getSupabase();
+    const { data: rows, error: findError } = await supabase
+      .from('applicants')
+      .select('id, name, preferences');
 
-    // 이제 관리자와 학생 모두 실제 applicants 테이블의 id를 삭제 대상으로 사용합니다.
-    const { data: deleted, error } = await supabase
+    if (findError) throw findError;
+
+    const target = (rows || []).find((row: any) => {
+      const meta = readInterviewMeta(row.preferences);
+      return row.name === name && String(meta?.studentId || '') === studentId;
+    });
+
+    if (!target) {
+      return NextResponse.json(
+        { error: `${name} (${studentId}) 신청자를 DB에서 찾지 못했습니다. 목록을 새로고침해 주세요.` },
+        { status: 404 }
+      );
+    }
+
+    const { data: deleted, error: deleteError } = await supabase
       .from('applicants')
       .delete()
-      .eq('id', id)
+      .eq('id', target.id)
       .select('id');
 
-    if (error) throw error;
+    if (deleteError) throw deleteError;
 
     if (!deleted || deleted.length === 0) {
       return NextResponse.json(
-        { error: '해당 신청자가 이미 삭제되었거나 존재하지 않습니다. 목록을 새로고침해 주세요.' },
+        { error: '삭제 대상이 DB에서 사라졌습니다. 목록을 새로고침해 주세요.' },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
       success: true,
-      deletedId: id,
+      deletedId: target.id,
       applicants: await getApplicants(),
     });
   } catch (error: any) {
