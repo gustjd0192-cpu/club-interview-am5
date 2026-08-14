@@ -127,13 +127,18 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   try {
     const body = await request.json();
-    const id = body.id !== undefined && body.id !== null
-      ? Number(body.id)
-      : null;
+    // 관리자 화면에서 id가 전달되더라도, 현재 DB의 id 형식과 다르면
+    // 학번 + 이름을 안전한 대체 키로 사용합니다.
+    const rawId = body.id;
+    const parsedId =
+      rawId !== undefined && rawId !== null && String(rawId).trim() !== ''
+        ? Number(rawId)
+        : null;
+
     const studentId = String(body.studentId || '').trim();
     const name = String(body.name || '').trim();
 
-    if (id === null && (!studentId || !name)) {
+    if ((parsedId === null || !Number.isFinite(parsedId)) && (!studentId || !name)) {
       return NextResponse.json(
         { error: '삭제할 신청자의 정보가 없습니다.' },
         { status: 400 }
@@ -142,14 +147,14 @@ export async function DELETE(request: Request) {
 
     const supabase = getSupabase();
 
-    // 관리자 화면에서는 DB의 고유 id로 삭제합니다.
-    // id가 없는 구버전 클라이언트 요청은 학번+이름으로도 처리합니다.
     let query = supabase
       .from('interview_applications')
       .delete();
 
-    if (id !== null && Number.isFinite(id)) {
-      query = query.eq('id', id);
+    // 숫자형 DB id가 확실한 경우에만 id를 사용합니다.
+    // 그렇지 않으면 관리자 화면에 표시된 학번 + 이름으로 삭제합니다.
+    if (parsedId !== null && Number.isFinite(parsedId)) {
+      query = query.eq('id', parsedId);
     } else {
       query = query.eq('student_id', studentId).eq('name', name);
     }
