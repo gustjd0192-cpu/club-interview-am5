@@ -157,24 +157,21 @@ export async function DELETE(request: Request) {
     const name = String(body.name || '').trim();
 
     const supabase = getSupabase();
-
-    // applicants 행 자체는 삭제하지 않습니다.
-    // 기존 지원/AI 배정 데이터는 유지하고 preferences._interview만 제거합니다.
     let target: any = null;
 
-    // 1) DB id로 우선 찾기
+    // 1) id가 있으면 가장 정확하게 찾습니다.
     if (rawId !== undefined && rawId !== null && String(rawId).trim() !== '') {
       const { data, error } = await supabase
         .from('applicants')
         .select('id, name, preferences')
-        .eq('id', String(rawId))
+        .eq('id', rawId)
         .maybeSingle();
 
       if (error) throw error;
       target = data;
     }
 
-    // 2) id로 못 찾으면 학번 + 이름으로 찾기
+    // 2) id가 없거나 일치하는 행이 없으면 _interview.studentId로 찾습니다.
     if (!target && studentId) {
       const { data: rows, error } = await supabase
         .from('applicants')
@@ -194,7 +191,7 @@ export async function DELETE(request: Request) {
 
     if (!target) {
       return NextResponse.json(
-        { error: '삭제할 면접 신청자를 찾지 못했습니다. 관리자 목록을 새로고침한 뒤 다시 시도해 주세요.' },
+        { error: '삭제할 면접 신청자를 찾지 못했습니다.' },
         { status: 404 }
       );
     }
@@ -206,9 +203,11 @@ export async function DELETE(request: Request) {
         ? target.preferences
         : {};
 
+    // applicants 행 자체와 기존 지원 정보는 유지하고 _interview 키만 제거합니다.
     const { _interview, ...remainingPreferences } = oldPreferences;
 
-    // applicants 행과 기존 지원 정보는 보존하고 면접 신청 정보만 삭제합니다.
+    // UPDATE 결과를 .select()에 의존하지 않습니다.
+    // Supabase 설정에 따라 UPDATE + RETURNING 결과가 비어도 실제 UPDATE는 성공할 수 있기 때문입니다.
     const { error: updateError } = await supabase
       .from('applicants')
       .update({ preferences: remainingPreferences })
@@ -216,20 +215,20 @@ export async function DELETE(request: Request) {
 
     if (updateError) throw updateError;
 
-    // UPDATE 응답 자체를 성공 여부로 판단하지 않고, 실제 DB를 다시 조회해
-    // _interview가 제거됐는지 확인합니다.
-    const { data: verified, error: verifyError } = await supabase
+    // 실제 DB에 반영됐는지 다시 읽어서 확인합니다.
+    const { data: after, error: verifyError } = await supabase
       .from('applicants')
-      .select('id, preferences')
+      .select('id, name, preferences')
       .eq('id', target.id)
       .maybeSingle();
 
     if (verifyError) throw verifyError;
 
-    const remainingInterview = readInterviewMeta(verified?.preferences);
+    const remainingInterview = readInterviewMeta(after?.preferences);
+
     if (remainingInterview?.slotId) {
       return NextResponse.json(
-        { error: '면접 신청 정보가 DB에서 정상적으로 취소되지 않았습니다. 잠시 후 다시 시도해 주세요.' },
+        { error: 'DB 업데이트 후에도 면접 신청 정보가 남아 있습니다.' },
         { status: 500 }
       );
     }
@@ -242,8 +241,9 @@ export async function DELETE(request: Request) {
   } catch (error: any) {
     console.error('DELETE /api/applicants:', error);
     return NextResponse.json(
-      { error: error.message || '신청 제거에 실패했습니다.' },
+      { error: error.message || '신청 취소에 실패했습니다.' },
       { status: 500 }
     );
   }
 }
+
