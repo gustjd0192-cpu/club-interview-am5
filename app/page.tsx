@@ -41,30 +41,39 @@ export default function StudentPage() {
   const [activeDateTab, setActiveDateTab] = useState<'9월 5일 (토)' | '9월 6일 (일)'>('9월 5일 (토)');
   const [message, setMessage] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [allSubmissions, setAllSubmissions] = useState<any[]>([]);
-  
-  // 신청 완료 상태 관리
+
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(false);
   const [confirmedSlotTitle, setConfirmedSlotTitle] = useState('');
+
+  useEffect(() => {
+    loadSubmissions();
+    const interval = window.setInterval(loadSubmissions, 3000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const loadSubmissions = async () => {
     try {
       const response = await fetch('/api/applicants', { cache: 'no-store' });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '신청 내역을 불러오지 못했습니다.');
-      setAllSubmissions(data.applicants || []);
-      return data.applicants || [];
-    } catch (error: any) {
-      console.error(error);
-      setMessage({ type: 'error', text: error.message || '신청 내역을 불러오지 못했습니다.' });
-      return [];
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '신청 내역을 불러오지 못했습니다.');
+      setAllSubmissions(result.applicants || []);
+
+      // 본인 확인 후 다른 기기에서 변경된 신청도 반영
+      if (studentId.trim() && name.trim()) {
+        const mine = (result.applicants || []).find(
+          (sub: any) => sub.studentId === studentId.trim() && sub.name === name.trim()
+        );
+        if (mine) {
+          setMySlotId(mine.slotId);
+          if (!selectedSlotId) setSelectedSlotId(mine.slotId);
+        } else {
+          setMySlotId(null);
+        }
+      }
+    } catch (e) {
+      console.error('신청 내역 조회 오류:', e);
     }
   };
-
-  useEffect(() => {
-    loadSubmissions();
-    const timer = window.setInterval(loadSubmissions, 3000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   const getSlotApplicantCount = (slotId: string) => {
     return allSubmissions.filter(s => s.slotId === slotId).length;
@@ -72,61 +81,126 @@ export default function StudentPage() {
 
   const handleIdentify = async (e: React.FormEvent) => {
     e.preventDefault();
-    const id = studentId.trim();
-    const applicantName = name.trim();
-    if (!id || !applicantName) { alert('학번과 이름을 입력해 주세요.'); return; }
-    const submissions = await loadSubmissions();
-    const existing = submissions.find((sub: any) => sub.studentId === id && sub.name === applicantName);
-    if (existing && existing.slotId) {
-      setMySlotId(existing.slotId); setSelectedSlotId(existing.slotId);
-      const slotObj = DEFAULT_OPTIONS.find(o => o.id === existing.slotId);
-      setConfirmedSlotTitle(slotObj?.title || existing.slotId);
-      setIsSubmittedSuccess(true); setIsIdentified(false);
-    } else {
-      setMySlotId(null); setSelectedSlotId(null);
-      setMessage({ type: 'success', text: '신청하실 시간대를 선택해 주세요.' });
-      setIsIdentified(true);
+    if (!studentId.trim() || !name.trim()) {
+      alert('학번과 이름을 입력해 주세요.');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/applicants', { cache: 'no-store' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || '신청 내역을 불러오지 못했습니다.');
+
+      const submissions = result.applicants || [];
+      setAllSubmissions(submissions);
+
+      const existing = submissions.find(
+        (sub: any) => sub.studentId === studentId.trim() && sub.name === name.trim()
+      );
+
+      if (existing) {
+        setMySlotId(existing.slotId);
+        setSelectedSlotId(existing.slotId);
+        const slotObj = DEFAULT_OPTIONS.find(o => o.id === existing.slotId);
+        if (slotObj) {
+          setConfirmedSlotTitle(slotObj.title);
+          setIsSubmittedSuccess(true);
+        }
+      } else {
+        setMySlotId(null);
+        setSelectedSlotId(null);
+        setMessage({ type: 'success', text: '신청하실 시간대를 선택해 주세요.' });
+        setIsIdentified(true);
+      }
+    } catch (error: any) {
+      alert(error.message || '신청 내역을 불러오지 못했습니다.');
     }
   };
 
   const handleSelectSlot = (slotId: string) => {
     const count = getSlotApplicantCount(slotId);
-    if (slotId !== mySlotId && count >= MAX_CAPACITY) { alert('선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.'); return; }
+
+    if (slotId !== mySlotId && count >= MAX_CAPACITY) {
+      alert('선착순 마감된 시간대입니다. 다른 시간대를 선택해 주세요.');
+      return;
+    }
     setSelectedSlotId(slotId);
   };
 
   const handleSubmit = async () => {
-    if (!selectedSlotId) { alert('면접 시간대를 선택해 주세요.'); return; }
+    if (!selectedSlotId) {
+      alert('면접 시간대를 선택해 주세요.');
+      return;
+    }
+
     try {
       const response = await fetch('/api/applicants', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentId.trim(), name: name.trim(), slotId: selectedSlotId }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: studentId.trim(),
+          name: name.trim(),
+          slotId: selectedSlotId,
+        }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '신청 저장에 실패했습니다.');
-      setAllSubmissions(data.applicants || []);
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.error || '신청 저장에 실패했습니다.');
+        await loadSubmissions();
+        return;
+      }
+
+      setAllSubmissions(result.applicants || []);
       setMySlotId(selectedSlotId);
-      setConfirmedSlotTitle(DEFAULT_OPTIONS.find(o => o.id === selectedSlotId)?.title || selectedSlotId);
-      setIsSubmittedSuccess(true); setIsIdentified(false); setMessage(null);
-    } catch (error: any) {
-      console.error(error); await loadSubmissions();
-      alert(error.message || '신청 저장에 실패했습니다. 다시 시도해 주세요.');
+      const slotObj = DEFAULT_OPTIONS.find(o => o.id === selectedSlotId);
+      setConfirmedSlotTitle(slotObj ? slotObj.title : '');
+      setIsSubmittedSuccess(true);
+      setMessage(null);
+    } catch (error) {
+      console.error(error);
+      alert('서버와 통신하는 중 오류가 발생했습니다.');
     }
   };
 
   const handleCancel = async () => {
     if (!confirm('신청을 취소하시겠습니까?')) return;
+
+    const mine = allSubmissions.find(
+      sub => sub.studentId === studentId.trim() && sub.name === name.trim()
+    );
+
+    if (!mine?.id) {
+      alert('현재 신청 정보를 찾지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+      await loadSubmissions();
+      return;
+    }
+
     try {
       const response = await fetch('/api/applicants', {
-        method: 'DELETE', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentId: studentId.trim(), name: name.trim() }),
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: mine.id }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || '신청 취소에 실패했습니다.');
-      setAllSubmissions(data.applicants || []); setMySlotId(null); setSelectedSlotId(null);
-      setIsSubmittedSuccess(false); setIsIdentified(true);
+      const result = await response.json();
+
+      if (!response.ok) {
+        alert(result.error || '신청 취소에 실패했습니다.');
+        await loadSubmissions();
+        return;
+      }
+
+      setAllSubmissions(result.applicants || []);
+      setMySlotId(null);
+      setSelectedSlotId(null);
+      setIsSubmittedSuccess(false);
+      setIsIdentified(true);
       setMessage({ type: 'info', text: '신청이 취소되었습니다. 다시 선택해 주세요.' });
-    } catch (error: any) { console.error(error); alert(error.message || '신청 취소에 실패했습니다.'); }
+    } catch (error) {
+      console.error(error);
+      alert('서버와 통신하는 중 오류가 발생했습니다.');
+    }
   };
 
   const filteredOptions = DEFAULT_OPTIONS.filter(o => o.date === activeDateTab);

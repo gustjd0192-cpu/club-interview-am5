@@ -66,6 +66,7 @@ export default function AdminPage() {
     if (inputPassword === ADMIN_PASSWORD) {
       setIsAuthenticated(true);
       setInputPassword('');
+      loadSubmissions();
     } else {
       alert('비밀번호가 올바르지 않습니다.');
     }
@@ -82,10 +83,7 @@ export default function AdminPage() {
         method: 'DELETE',
         cache: 'no-store',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          studentId,
-          name,
-        }),
+        body: JSON.stringify({ id: applicant.id }),
       });
 
       const result = await response.json();
@@ -96,7 +94,6 @@ export default function AdminPage() {
         return;
       }
 
-      // 서버가 실제 DB 삭제 후 다시 조회한 목록만 화면에 반영
       setAllSubmissions(result.applicants || []);
     } catch (error) {
       console.error(error);
@@ -223,8 +220,8 @@ export default function AdminPage() {
                       {applicants.length === 0 ? (
                         <p className="text-[11px] text-slate-400 py-2 text-center">신청자 없음</p>
                       ) : (
-                        applicants.map((app, idx) => (
-                          <div key={idx} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-2.5 py-1.5 rounded-lg">
+                        applicants.map((app) => (
+                          <div key={app.id} className="flex justify-between items-center bg-slate-50 border border-slate-100 px-2.5 py-1.5 rounded-lg">
                             <span className="text-xs font-semibold text-slate-800">
                               {app.name} <span className="text-[10px] text-slate-400 font-normal">({app.studentId})</span>
                             </span>
